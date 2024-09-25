@@ -19,22 +19,20 @@ MD5-SHA-Checksum-Utility is a user-friendly graphical tool designed to calculate
 ![App Screenshot](https://github.com/user-attachments/assets/ebe59930-4a7b-49aa-a425-9761bdd04e07)
 
 ## 🔽 Download
-You can download the most recent version of tool [here](https://codeload.github.com/oop7/MD5-SHA-Checksum-Utility/zip/refs/heads/main)
-
+ You can download the most recent version of the tool, including the executable, [here](https://github.com/oop7/MD5-SHA-Checksum-Utility/releases)'
+ 
 ## ⚙️  Installation
 
 # Install Required Packages
 Ensure you have Python installed. Install required packages using pip:
 ```bash
-pip install tkinterdnd2
+pip install PyQt5
 ```
 
 ## 💻 Usage
 
- Run the application using Python:
-```bash
-python checksum_utility.py
-```
+ Run the application by double-clicking the executable or using Python:`python checksum_utility.py`
+ 
 # 🛠️  How to Use
 
 1. Open File: Click the "Browse" button to select a file, or drag and drop a file into the entry field.
