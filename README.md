@@ -14,9 +14,10 @@ MD5-SHA-Checksum-Utility is a user-friendly graphical tool designed to calculate
 
 ## ✅ Screenshots
 
-![App Screenshot](https://github.com/user-attachments/assets/e4db83e3-2895-4687-93ad-8e5c9b6d0bc0)
+![Screenshot 2024-11-28 164814](https://github.com/user-attachments/assets/dca14d3b-40e7-474b-ab78-bfc213b663ae)
 
-![App Screenshot](https://github.com/user-attachments/assets/ebe59930-4a7b-49aa-a425-9761bdd04e07)
+![Screenshot 2024-11-28 164840](https://github.com/user-attachments/assets/9532c657-1538-4b27-851e-c87c96abf5fd)
+
 
 ## 🔽 Download
  You can download the most recent version of the tool, including the executable, [here](https://github.com/oop7/MD5-SHA-Checksum-Utility/releases)
@@ -26,7 +27,7 @@ MD5-SHA-Checksum-Utility is a user-friendly graphical tool designed to calculate
 # Install Required Packages
 Ensure you have Python installed. Install required packages using pip:
 ```bash
-pip install PyQt5
+pip install PyQt5 Pillow
 ```
 
 ## 💻 Usage
