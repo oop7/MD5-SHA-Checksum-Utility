@@ -15,9 +15,15 @@ MD5-SHA-Checksum-Utility is a user-friendly graphical tool designed to calculate
 
 ## ✅ Screenshots
 
-![Screenshot 2024-11-28 164814](https://github.com/user-attachments/assets/dca14d3b-40e7-474b-ab78-bfc213b663ae)
+![Screenshot 2024-11-29 130057](https://github.com/user-attachments/assets/81608166-8aeb-42f7-8226-9bdbed41ca16)
 
-![Screenshot 2024-11-28 164840](https://github.com/user-attachments/assets/9532c657-1538-4b27-851e-c87c96abf5fd)
+
+![Screenshot 2024-11-29 130124](https://github.com/user-attachments/assets/31fce673-7b7e-41ec-8059-33c40dcde353)
+
+
+![Screenshot 2024-11-29 130229](https://github.com/user-attachments/assets/a261fa9d-e3f9-4087-9733-0aca82b852fa)
+
+
 
 ## 🔽 Download
 You can download the most recent version of the tool, including the executable, [here](https://github.com/oop7/MD5-SHA-Checksum-Utility/releases).
