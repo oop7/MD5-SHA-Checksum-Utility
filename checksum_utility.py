@@ -2,11 +2,13 @@ import sys
 import hashlib
 import base64
 import json
-from PyQt5.QtWidgets import (QApplication, QWidget, QGridLayout, QLabel, QLineEdit, QPushButton, QFileDialog, QCheckBox, QMessageBox, QProgressBar)
+from PyQt5.QtWidgets import (QApplication, QWidget, QGridLayout, QLabel, QLineEdit, QPushButton, QFileDialog, QCheckBox, QMessageBox, QProgressBar, QTabWidget, QVBoxLayout, QHBoxLayout, QTableWidget, 
+                            QTableWidgetItem, QHeaderView, QSpacerItem, QSizePolicy)
 from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtCore import Qt
 from io import BytesIO
 from PIL import Image
+import os
 
 # Base64 encoded icon (example, replace with your actual base64 data)
 icon_base64 = """
@@ -33,133 +35,210 @@ class ChecksumApp(QWidget):
     def __init__(self):
         super().__init__()
         self.init_ui()
+        self.files_data = []
 
     def init_ui(self):
-        self.setWindowTitle("MD5 & SHA Checksum Utility v1.0")
+        self.setWindowTitle("MD5 & SHA Checksum Utility v2.0")
         self.setWindowIcon(get_icon_from_base64(icon_base64))
-        self.setGeometry(400, 100, 600, 400)
+        self.setGeometry(400, 100, 800, 600)
 
-        # Apply dark mode stylesheet
+        # Modern dark theme
         self.setStyleSheet("""
             QWidget {
-                background-color: #222;
-                color: #fff;
+                background-color: #2b2b2b;
+                color: #ffffff;
+                font-size: 10pt;
+            }
+            QTabWidget::pane {
+                border: 1px solid #444;
+                background: #2b2b2b;
+            }
+            QTabBar::tab {
+                background: #1e1e1e;
+                color: #ffffff;
+                padding: 8px 20px;
+                border: 1px solid #444;
+                margin-right: 2px;
+            }
+            QTabBar::tab:selected {
+                background: #0078d7;
+                border-bottom: none;
             }
             QLabel {
-                color: #ccc;
+                color: #ffffff;
             }
-            QLineEdit, QCheckBox {
-                background-color: #333;
-                color: #fff;
+            QLineEdit {
+                padding: 5px;
+                background-color: #3b3b3b;
                 border: 1px solid #555;
+                border-radius: 3px;
+                color: #ffffff;
             }
             QPushButton {
-                background-color: #444;
-                color: #fff;
-                border: 1px solid #555;
-                padding: 5px;
+                background-color: #0078d7;
+                color: white;
+                border: none;
+                padding: 8px 15px;
                 border-radius: 3px;
             }
             QPushButton:hover {
-                background-color: #555;
+                background-color: #1e88e5;
+            }
+            QPushButton:pressed {
+                background-color: #005fb3;
+            }
+            QCheckBox {
+                spacing: 8px;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
             }
             QProgressBar {
-                background-color: #333;
-                color: #fff;
-                border: 1px solid #555;
+                border: 1px solid #444;
+                border-radius: 3px;
+                text-align: center;
             }
             QProgressBar::chunk {
                 background-color: #0078d7;
             }
+            QTableWidget {
+                background-color: #2b2b2b;
+                gridline-color: #444;
+                border: 1px solid #444;
+            }
+            QTableWidget::item {
+                padding: 5px;
+            }
+            QHeaderView::section {
+                background-color: #1e1e1e;
+                padding: 5px;
+                border: 1px solid #444;
+            }
         """)
 
-        grid = QGridLayout()
-
-        # File label, entry, and browse button
+        # Main layout
+        main_layout = QVBoxLayout()
+        
+        # Create tab widget
+        tab_widget = QTabWidget()
+        
+        # Single File Tab
+        single_file_tab = QWidget()
+        single_file_layout = QVBoxLayout()
+        
+        # File selection area
+        file_layout = QHBoxLayout()
         file_label = QLabel("File:")
-        grid.addWidget(file_label, 0, 0)
-
         self.file_entry = QLineEdit()
-        grid.addWidget(self.file_entry, 0, 1)
-
         self.browse_button = QPushButton("Browse")
         self.browse_button.clicked.connect(self.open_file)
-        grid.addWidget(self.browse_button, 0, 2)
+        
+        file_layout.addWidget(file_label)
+        file_layout.addWidget(self.file_entry)
+        file_layout.addWidget(self.browse_button)
+        single_file_layout.addLayout(file_layout)
+        
+        # Checksum options and results
+        for hash_type in [('MD5', 'md5'), ('SHA-1', 'sha1'), 
+                         ('SHA-256', 'sha256'), ('SHA-512', 'sha512')]:
+            hash_layout = QHBoxLayout()
+            
+            checkbox = QCheckBox(hash_type[0])
+            checkbox.setChecked(True)
+            setattr(self, f"{hash_type[1]}_var", checkbox)
+            
+            result_field = QLineEdit()
+            result_field.setReadOnly(True)
+            setattr(self, f"{hash_type[1]}_result", result_field)
+            
+            copy_button = QPushButton(f"Copy {hash_type[0]}")
+            copy_button.clicked.connect(
+                lambda x, field=result_field: self.copy_to_clipboard(field.text())
+            )
+            
+            hash_layout.addWidget(checkbox)
+            hash_layout.addWidget(result_field)
+            hash_layout.addWidget(copy_button)
+            single_file_layout.addLayout(hash_layout)
 
-        # Checkboxes and hash result fields
-        self.md5_var = QCheckBox("MD5")
-        self.md5_var.setChecked(True)
-        grid.addWidget(self.md5_var, 1, 0)
-
-        self.md5_result = QLineEdit()
-        self.md5_result.setReadOnly(True)
-        grid.addWidget(self.md5_result, 1, 1)
-
-        self.md5_copy_button = QPushButton("Copy MD5")
-        self.md5_copy_button.clicked.connect(lambda: self.copy_to_clipboard(self.md5_result.text()))
-        grid.addWidget(self.md5_copy_button, 1, 2)
-
-        self.sha1_var = QCheckBox("SHA-1")
-        self.sha1_var.setChecked(True)
-        grid.addWidget(self.sha1_var, 2, 0)
-
-        self.sha1_result = QLineEdit()
-        self.sha1_result.setReadOnly(True)
-        grid.addWidget(self.sha1_result, 2, 1)
-
-        self.sha1_copy_button = QPushButton("Copy SHA-1")
-        self.sha1_copy_button.clicked.connect(lambda: self.copy_to_clipboard(self.sha1_result.text()))
-        grid.addWidget(self.sha1_copy_button, 2, 2)
-
-        self.sha256_var = QCheckBox("SHA-256")
-        self.sha256_var.setChecked(True)
-        grid.addWidget(self.sha256_var, 3, 0)
-
-        self.sha256_result = QLineEdit()
-        self.sha256_result.setReadOnly(True)
-        grid.addWidget(self.sha256_result, 3, 1)
-
-        self.sha256_copy_button = QPushButton("Copy SHA-256")
-        self.sha256_copy_button.clicked.connect(lambda: self.copy_to_clipboard(self.sha256_result.text()))
-        grid.addWidget(self.sha256_copy_button, 3, 2)
-
-        self.sha512_var = QCheckBox("SHA-512")
-        self.sha512_var.setChecked(True)
-        grid.addWidget(self.sha512_var, 4, 0)
-
-        self.sha512_result = QLineEdit()
-        self.sha512_result.setReadOnly(True)
-        grid.addWidget(self.sha512_result, 4, 1)
-
-        self.sha512_copy_button = QPushButton("Copy SHA-512")
-        self.sha512_copy_button.clicked.connect(lambda: self.copy_to_clipboard(self.sha512_result.text()))
-        grid.addWidget(self.sha512_copy_button, 4, 2)
+        # Verify hash section
+        verify_layout = QVBoxLayout()
+        verify_label = QLabel("Verify Hash:")
+        self.expected_hash_entry = QLineEdit()
+        self.expected_hash_entry.setPlaceholderText("Paste hash to verify")
+        self.verify_button = QPushButton("Verify")
+        self.verify_button.clicked.connect(self.verify_hash)
+        
+        verify_layout.addWidget(verify_label)
+        verify_layout.addWidget(self.expected_hash_entry)
+        verify_layout.addWidget(self.verify_button)
+        single_file_layout.addLayout(verify_layout)
 
         # Save report button
         self.save_button = QPushButton("Save Report")
         self.save_button.clicked.connect(self.save_report)
-        grid.addWidget(self.save_button, 5, 1)
+        single_file_layout.addWidget(self.save_button)
+        
+        single_file_tab.setLayout(single_file_layout)
 
-        # Verify Hash section
-        verify_label = QLabel("Verify Hash with Generated Hash (MD5, SHA-1, SHA-256, or SHA-512)")
-        grid.addWidget(verify_label, 6, 0, 1, 3)
+        # Folder Tab
+        folder_tab = QWidget()
+        folder_layout = QVBoxLayout()
+        
+        # Folder selection
+        folder_header = QHBoxLayout()
+        folder_label = QLabel("Folder:")
+        self.folder_entry = QLineEdit()
+        self.browse_folder_button = QPushButton("Browse Folder")
+        self.browse_folder_button.clicked.connect(self.open_folder)
+        
+        folder_header.addWidget(folder_label)
+        folder_header.addWidget(self.folder_entry)
+        folder_header.addWidget(self.browse_folder_button)
+        folder_layout.addLayout(folder_header)
 
-        self.expected_hash_entry = QLineEdit()
-        self.expected_hash_entry.setPlaceholderText("Paste expected hash here")
-        grid.addWidget(self.expected_hash_entry, 7, 1)
+        # Options
+        options_layout = QHBoxLayout()
+        self.include_subfolders = QCheckBox("Include Subfolders")
+        self.include_subfolders.setChecked(True)
+        self.include_hidden = QCheckBox("Include Hidden Files")
+        
+        options_layout.addWidget(self.include_subfolders)
+        options_layout.addWidget(self.include_hidden)
+        options_layout.addStretch()
+        folder_layout.addLayout(options_layout)
 
-        self.verify_button = QPushButton("Verify")
-        self.verify_button.clicked.connect(self.verify_hash)
-        grid.addWidget(self.verify_button, 7, 2)
+        # Results table
+        self.results_table = QTableWidget()
+        self.results_table.setColumnCount(6)
+        self.results_table.setHorizontalHeaderLabels(
+            ['File Name', 'Path', 'MD5', 'SHA-1', 'SHA-256', 'SHA-512']
+        )
+        self.results_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        folder_layout.addWidget(self.results_table)
 
-        # Progress bar for hashing operations
+        # Save folder results button
+        self.save_folder_results = QPushButton("Save Folder Results")
+        self.save_folder_results.clicked.connect(self.save_folder_report)
+        folder_layout.addWidget(self.save_folder_results)
+        
+        folder_tab.setLayout(folder_layout)
+
+        # Add tabs to widget
+        tab_widget.addTab(single_file_tab, "Single File")
+        tab_widget.addTab(folder_tab, "Folder Scan")
+        
+        # Progress bar
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
-        grid.addWidget(self.progress_bar, 8, 0, 1, 3)
-
-        # Set layout
-        self.setLayout(grid)
-
+        
+        # Add everything to main layout
+        main_layout.addWidget(tab_widget)
+        main_layout.addWidget(self.progress_bar)
+        
+        self.setLayout(main_layout)
+        
         # Enable drag and drop
         self.setAcceptDrops(True)
 
@@ -250,6 +329,103 @@ class ChecksumApp(QWidget):
             file_path = urls[0].toLocalFile()
             self.file_entry.setText(file_path)
             self.display_checksums(file_path)
+
+    def open_folder(self):
+        folder_path = QFileDialog.getExistingDirectory(self, 'Select Folder')
+        if folder_path:
+            self.folder_entry.setText(folder_path)
+            self.scan_folder(folder_path)
+
+    def scan_folder(self, folder_path):
+        self.files_data = []
+        self.progress_bar.setVisible(True)
+        self.results_table.setRowCount(0)
+        
+        files_to_scan = []
+        for root, dirs, files in os.walk(folder_path):
+            if not self.include_subfolders.isChecked() and root != folder_path:
+                continue
+                
+            for file in files:
+                if not self.include_hidden.isChecked() and file.startswith('.'):
+                    continue
+                    
+                full_path = os.path.join(root, file)
+                files_to_scan.append(full_path)
+
+        total_files = len(files_to_scan)
+        for i, file_path in enumerate(files_to_scan):
+            try:
+                relative_path = os.path.relpath(file_path, folder_path)
+                file_data = {
+                    'name': os.path.basename(file_path),
+                    'path': relative_path,
+                    'md5': calculate_checksum(file_path, 'md5') if self.md5_var.isChecked() else '',
+                    'sha1': calculate_checksum(file_path, 'sha1') if self.sha1_var.isChecked() else '',
+                    'sha256': calculate_checksum(file_path, 'sha256') if self.sha256_var.isChecked() else '',
+                    'sha512': calculate_checksum(file_path, 'sha512') if self.sha512_var.isChecked() else ''
+                }
+                self.files_data.append(file_data)
+                
+                # Add to table
+                row = self.results_table.rowCount()
+                self.results_table.insertRow(row)
+                self.results_table.setItem(row, 0, QTableWidgetItem(file_data['name']))
+                self.results_table.setItem(row, 1, QTableWidgetItem(file_data['path']))
+                self.results_table.setItem(row, 2, QTableWidgetItem(file_data['md5']))
+                self.results_table.setItem(row, 3, QTableWidgetItem(file_data['sha1']))
+                self.results_table.setItem(row, 4, QTableWidgetItem(file_data['sha256']))
+                self.results_table.setItem(row, 5, QTableWidgetItem(file_data['sha512']))
+                
+                progress = int((i + 1) / total_files * 100)
+                self.progress_bar.setValue(progress)
+                QApplication.processEvents()
+
+            except Exception as e:
+                print(f"Error processing {file_path}: {e}")
+
+        self.progress_bar.setVisible(False)
+
+    def save_folder_report(self):
+        if not self.files_data:
+            QMessageBox.warning(self, "Warning", "No files have been scanned yet.")
+            return
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, 'Save Folder Report', '', 
+            'CSV files (*.csv);;JSON files (*.json);;Text files (*.txt)'
+        )
+        
+        if not file_path:
+            return
+
+        try:
+            if file_path.endswith('.json'):
+                with open(file_path, 'w') as f:
+                    json.dump(self.files_data, f, indent=4)
+            
+            elif file_path.endswith('.csv'):
+                import csv
+                with open(file_path, 'w', newline='') as f:
+                    writer = csv.DictWriter(f, fieldnames=['name', 'path', 'md5', 'sha1', 'sha256', 'sha512'])
+                    writer.writeheader()
+                    writer.writerows(self.files_data)
+            
+            else:  # .txt
+                with open(file_path, 'w') as f:
+                    for data in self.files_data:
+                        f.write(f"File: {data['name']}\n")
+                        f.write(f"Path: {data['path']}\n")
+                        if data['md5']: f.write(f"MD5: {data['md5']}\n")
+                        if data['sha1']: f.write(f"SHA1: {data['sha1']}\n")
+                        if data['sha256']: f.write(f"SHA256: {data['sha256']}\n")
+                        if data['sha512']: f.write(f"SHA512: {data['sha512']}\n")
+                        f.write("\n")
+
+            QMessageBox.information(self, "Success", "Folder report saved successfully!")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to save report: {e}")
 
 # Run the application
 if __name__ == '__main__':
