@@ -87,6 +87,10 @@ class ChecksumApp(QWidget):
             QPushButton:pressed {
                 background-color: #005fb3;
             }
+            QPushButton:disabled {
+                background-color: grey;
+                color: white;
+            }
             QCheckBox {
                 spacing: 8px;
             }
@@ -169,8 +173,38 @@ class ChecksumApp(QWidget):
         self.expected_hash_entry.setPlaceholderText("Paste hash to verify")
         self.verify_button = QPushButton("Verify")
         self.verify_button.clicked.connect(self.verify_hash)
-        
+
+        # Add Locate and Load Checksum File buttons
+        file_actions_layout = QHBoxLayout()
+
+        self.locate_checksum_button = QPushButton("Auto-Locate Checksum Files in the Directory")
+        self.locate_checksum_button.clicked.connect(self.locate_checksum_files)
+
+        self.load_checksum_button = QPushButton("Select Checksum File")
+        self.load_checksum_button.clicked.connect(self.select_checksum_file)
+
+        file_actions_layout.addWidget(self.locate_checksum_button)
+        file_actions_layout.addWidget(self.load_checksum_button)
+
+        # Buttons for hash file actions
+        self.hash_file_buttons = {}
+        hash_file_button_layout = QHBoxLayout()
+
+        for hash_type in ['MD5', 'SHA-1', 'SHA-256', 'SHA-512']:
+            button = QPushButton(f"Fill {hash_type} hash")
+            button.setEnabled(False)  # Initially disabled
+            button.clicked.connect(lambda _, ht=hash_type: self.populate_hash_from_file(ht))
+            self.hash_file_buttons[hash_type] = button
+            hash_file_button_layout.addWidget(button)
+
+        # Add the fifth button to clear loaded hash files
+        self.clear_loaded_hashfiles_button = QPushButton("Clear Loaded Hashfiles")
+        self.clear_loaded_hashfiles_button.clicked.connect(self.clear_loaded_hashfiles_action)
+        hash_file_button_layout.addWidget(self.clear_loaded_hashfiles_button)
+
         verify_layout.addWidget(verify_label)
+        verify_layout.addLayout(file_actions_layout)
+        verify_layout.addLayout(hash_file_button_layout)
         verify_layout.addWidget(self.expected_hash_entry)
         verify_layout.addWidget(self.verify_button)
         single_file_layout.addLayout(verify_layout)
@@ -426,6 +460,129 @@ class ChecksumApp(QWidget):
             
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save report: {e}")
+
+    def locate_checksum_files(self):
+        file_path = self.file_entry.text()
+        if not file_path or not os.path.isfile(file_path):
+            QMessageBox.warning(self, "Warning", "Please select a valid file first.")
+            return
+
+        directory = os.path.dirname(file_path)
+        filename = os.path.basename(file_path)
+        browsed_filename = filename
+
+        found_any = False
+
+        # Look for checksum files with the format basename.ext.<checksum_type>
+        for ext, hash_type in zip(['md5sum', 'sha1sum', 'sha256sum', 'sha512sum'],
+                                  ['MD5', 'SHA-1', 'SHA-256', 'SHA-512']):
+            possible_file = os.path.join(directory, f"{filename}.{ext}")
+            if os.path.isfile(possible_file):
+                found_any |= self.process_checksum_file(possible_file, browsed_filename)
+
+        if not found_any:
+            QMessageBox.information(
+                self,
+                "No Checksum Files Found",
+                f"No checksum files found for {filename} in {directory}."
+            )
+
+    def populate_hash_from_file(self, hash_type):
+        button = self.hash_file_buttons.get(hash_type)
+        if button and getattr(button, "hash_value", None):
+            self.expected_hash_entry.setText(button.hash_value)  # Populate the hash field
+            #QMessageBox.information(
+            #    self,
+            #    "Hash Populated",
+            #    f"The {hash_type} hash has been placed into the verification field."
+            #)
+        else:
+            QMessageBox.warning(self, "No Hash Loaded", f"No hash value is associated with the {hash_type} button.")
+
+    def select_checksum_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open Checksum File", "",
+            "Checksum Files (*.md5sum *.sha1sum *.sha256sum *.sha512sum);;All Files (*)"
+        )
+        if not file_path:
+            return  # User canceled the dialog
+
+        # Use the helper method to process the selected file
+        browsed_file = self.file_entry.text()
+        browsed_filename = os.path.basename(browsed_file) if browsed_file else None
+        self.process_checksum_file(file_path, browsed_filename)
+
+    def process_checksum_file(self, file_path, browsed_filename=None):
+        try:
+            with open(file_path, 'r') as f:
+                line = f.readline().strip()  # Read the first line and strip whitespace
+
+            # Extract hash and optional filename
+            parts = line.split(maxsplit=1)
+            hash_value = parts[0] if parts else ""
+            file_name_in_hash = parts[1] if len(parts) > 1 else ""
+
+            # Determine the hash type based on the file extension
+            file_extension = os.path.splitext(file_path)[1]
+            hash_type_map = {
+                '.md5sum': 'MD5',
+                '.sha1sum': 'SHA-1',
+                '.sha256sum': 'SHA-256',
+                '.sha512sum': 'SHA-512',
+            }
+            hash_type = hash_type_map.get(file_extension.lower())
+
+            if not hash_type:
+                QMessageBox.warning(
+                    self,
+                    "Unsupported File",
+                    f"The file {file_path} does not have a recognized checksum extension."
+                )
+                return False
+
+            # Activate the corresponding button and store the hash value in the button
+            if hash_type in self.hash_file_buttons:
+                button = self.hash_file_buttons[hash_type]
+                button.setEnabled(True)
+                button.setToolTip(f"Hash loaded from {file_path}")
+                button.file_path = file_path  # Associate the file path with the button
+                button.hash_value = hash_value  # Store the hash value for use when clicked
+
+            # Warn if the filename in the checksum file does not match the browsed file
+            if browsed_filename:
+                if file_name_in_hash and file_name_in_hash != browsed_filename:
+                    QMessageBox.warning(
+                        self,
+                        "Filename Mismatch",
+                        f"The filename in the checksum file ({file_name_in_hash}) "
+                        f"does not match the browsed file ({browsed_filename})."
+                    )
+
+            return True
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Could not read file {file_path}: {e}"
+            )
+            return False
+
+    def clear_loaded_hashfiles_action(self):
+        # Disable all "Fill <hash> hash" buttons, reset their tooltips, and clear associated file paths
+        for button in self.hash_file_buttons.values():
+            button.setEnabled(False)
+            button.setToolTip("Inactive")
+            button.file_path = None  # Remove any associated file paths
+
+        # Clear the "Paste hash to verify" field
+        self.expected_hash_entry.clear()
+
+        #QMessageBox.information(
+        #    self,
+        #    "Hashfiles Cleared",
+        #    "All loaded hash files have been cleared."
+        #)
+
 
 # Run the application
 if __name__ == '__main__':
