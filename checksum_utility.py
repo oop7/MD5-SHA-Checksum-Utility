@@ -6,6 +6,7 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QGridLayout, QLabel, QLineEd
                             QTableWidgetItem, QHeaderView, QSpacerItem, QSizePolicy)
 from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtCore import Qt
+from PyQt5.QtCore import QThread, pyqtSignal
 from io import BytesIO
 from PIL import Image
 import os
@@ -30,6 +31,28 @@ def calculate_checksum(file_path, algorithm='md5'):
         for chunk in iter(lambda: f.read(4096), b''):
             hash_func.update(chunk)
     return hash_func.hexdigest()
+
+class ChecksumThread(QThread):
+    progress = pyqtSignal(int)
+    result = pyqtSignal(dict)
+    error = pyqtSignal(str)
+
+    def __init__(self, file_path, hash_algorithms):
+        super().__init__()
+        self.file_path = file_path
+        self.hash_algorithms = hash_algorithms
+
+    def run(self):
+        try:
+            results = {}
+            for i, algorithm in enumerate(self.hash_algorithms):
+                if algorithm['enabled']:
+                    results[algorithm['name']] = calculate_checksum(self.file_path, algorithm['name'])
+                self.progress.emit(int((i + 1) / len(self.hash_algorithms) * 100))
+            self.result.emit(results)
+        except Exception as e:
+            self.error.emit(str(e))
+
 
 class ChecksumApp(QWidget):
     def __init__(self):
@@ -247,30 +270,42 @@ class ChecksumApp(QWidget):
         file_path, _ = QFileDialog.getOpenFileName(self, 'Open File')
         if file_path:
             self.file_entry.setText(file_path)
-            self.display_checksums(file_path)
+            self.start_checksum_thread(file_path)
 
-    # Function to display checksums
-    def display_checksums(self, file_path):
+    def start_checksum_thread(self, file_path):
+        hash_algorithms = [
+            {'name': 'md5', 'enabled': self.md5_var.isChecked()},
+            {'name': 'sha1', 'enabled': self.sha1_var.isChecked()},
+            {'name': 'sha256', 'enabled': self.sha256_var.isChecked()},
+            {'name': 'sha512', 'enabled': self.sha512_var.isChecked()},
+        ]
+
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
-        try:
-            if self.md5_var.isChecked():
-                md5_checksum = calculate_checksum(file_path, 'md5')
-                self.md5_result.setText(md5_checksum)
-            if self.sha1_var.isChecked():
-                sha1_checksum = calculate_checksum(file_path, 'sha1')
-                self.sha1_result.setText(sha1_checksum)
-            if self.sha256_var.isChecked():
-                sha256_checksum = calculate_checksum(file_path, 'sha256')
-                self.sha256_result.setText(sha256_checksum)
-            if self.sha512_var.isChecked():
-                sha512_checksum = calculate_checksum(file_path, 'sha512')
-                self.sha512_result.setText(sha512_checksum)
-            self.progress_bar.setValue(100)
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"An error occurred: {e}")
-        finally:
-            self.progress_bar.setVisible(False)
+
+        self.checksum_thread = ChecksumThread(file_path, hash_algorithms)
+        self.checksum_thread.progress.connect(self.update_progress_bar)
+        self.checksum_thread.result.connect(self.display_checksum_results)
+        self.checksum_thread.error.connect(self.handle_checksum_error)
+        self.checksum_thread.start()
+
+    def update_progress_bar(self, value):
+        self.progress_bar.setValue(value)
+
+    def display_checksum_results(self, results):
+        self.progress_bar.setVisible(False)
+        if 'md5' in results:
+            self.md5_result.setText(results.get('md5', ''))
+        if 'sha1' in results:
+            self.sha1_result.setText(results.get('sha1', ''))
+        if 'sha256' in results:
+            self.sha256_result.setText(results.get('sha256', ''))
+        if 'sha512' in results:
+            self.sha512_result.setText(results.get('sha512', ''))
+
+    def handle_checksum_error(self, error_message):
+        self.progress_bar.setVisible(False)
+        QMessageBox.critical(self, "Error", f"Checksum calculation failed: {error_message}")
 
     # Function to copy checksum to clipboard
     def copy_to_clipboard(self, checksum):
