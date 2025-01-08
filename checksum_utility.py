@@ -35,22 +35,27 @@ def calculate_checksum(file_path, algorithm='md5', progress_callback=None):
                 progress_callback(bytes_read / file_size * 100)
     return hash_func.hexdigest()
 
-class ChecksumWorker(QThread):
-    """Worker thread for checksum calculation to avoid blocking the main thread."""
+class ChecksumThread(QThread):
+    """Thread to calculate checksums for multiple algorithms."""
     progress = pyqtSignal(int)
-    result = pyqtSignal(str)
+    result = pyqtSignal(dict)
+    error = pyqtSignal(str)
 
-    def __init__(self, file_path, algorithm):
+    def __init__(self, file_path, hash_algorithms):
         super().__init__()
         self.file_path = file_path
-        self.algorithm = algorithm
+        self.hash_algorithms = hash_algorithms
 
     def run(self):
-        checksum = calculate_checksum(self.file_path, self.algorithm, progress_callback=self.update_progress)
-        self.result.emit(checksum)
-
-    def update_progress(self, progress):
-        self.progress.emit(int(progress))
+        try:
+            results = {}
+            for i, algorithm in enumerate(self.hash_algorithms):
+                if algorithm['enabled']:
+                    results[algorithm['name']] = calculate_checksum(self.file_path, algorithm['name'])
+                self.progress.emit(int((i + 1) / len(self.hash_algorithms) * 100))
+            self.result.emit(results)
+        except Exception as e:
+            self.error.emit(str(e))
 
 class ChecksumApp(QWidget):
     def __init__(self):
@@ -179,63 +184,75 @@ class ChecksumApp(QWidget):
 
     def open_file(self):
         """Open file dialog to select a file."""
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select a File")
+        file_path, _ = QFileDialog.getOpenFileName(self, 'Open File')
         if file_path:
             self.file_entry.setText(file_path)
+            self.start_checksum_thread(file_path)
 
-    def open_folder(self):
-        """Open folder dialog to select a folder."""
-        folder_path = QFileDialog.getExistingDirectory(self, "Select Folder")
-        if folder_path:
-            self.folder_entry.setText(folder_path)
+    def start_checksum_thread(self, file_path):
+        """Start the checksum calculation thread."""
+        hash_algorithms = [
+            {'name': 'md5', 'enabled': self.md5_var.isChecked()},
+            {'name': 'sha1', 'enabled': self.sha1_var.isChecked()},
+            {'name': 'sha256', 'enabled': self.sha256_var.isChecked()},
+            {'name': 'sha512', 'enabled': self.sha512_var.isChecked()},
+        ]
 
-    def copy_to_clipboard(self, text):
-        """Copy text to the clipboard."""
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setValue(0)
+
+        self.checksum_thread = ChecksumThread(file_path, hash_algorithms)
+        self.checksum_thread.progress.connect(self.update_progress_bar)
+        self.checksum_thread.result.connect(self.display_checksum_results)
+        self.checksum_thread.error.connect(self.handle_checksum_error)
+        self.checksum_thread.start()
+
+    def update_progress_bar(self, value):
+        """Update the progress bar."""
+        self.progress_bar.setValue(value)
+
+    def display_checksum_results(self, results):
+        """Display the checksum results."""
+        self.progress_bar.setVisible(False)
+        if 'md5' in results:
+            self.md5_result.setText(results.get('md5', ''))
+        if 'sha1' in results:
+            self.sha1_result.setText(results.get('sha1', ''))
+        if 'sha256' in results:
+            self.sha256_result.setText(results.get('sha256', ''))
+        if 'sha512' in results:
+            self.sha512_result.setText(results.get('sha512', ''))
+
+    def handle_checksum_error(self, error_message):
+        """Handle checksum calculation errors."""
+        self.progress_bar.setVisible(False)
+        QMessageBox.critical(self, "Error", f"Checksum calculation failed: {error_message}")
+
+    def copy_to_clipboard(self, checksum):
+        """Copy checksum to clipboard."""
         clipboard = QApplication.clipboard()
-        clipboard.setText(text)
-
-    def verify_hash(self):
-        """Verify the hash of a file against the expected hash."""
-        expected_hash = self.expected_hash_entry.text()
-        if not expected_hash:
-            QMessageBox.warning(self, "Error", "Please enter a hash to verify.")
-            return
-
-        file_path = self.file_entry.text()
-        if not file_path:
-            QMessageBox.warning(self, "Error", "Please select a file.")
-            return
-
-        calculated_hash = self.calculate_checksum(file_path)
-        if calculated_hash == expected_hash:
-            QMessageBox.information(self, "Success", "Hash matches!")
-        else:
-            QMessageBox.warning(self, "Failure", "Hash does not match!")
+        clipboard.setText(checksum)
+        QMessageBox.information(self, "Copied", "Checksum copied to clipboard!")
 
     def save_report(self):
         """Save the checksum report to a file."""
-        file_path, _ = QFileDialog.getSaveFileName(self, "Save Report", "", "Text Files (*.txt)")
+        report_data = {
+            "File": self.file_entry.text(),
+            "MD5": self.md5_result.text(),
+            "SHA1": self.sha1_result.text(),
+            "SHA256": self.sha256_result.text(),
+            "SHA512": self.sha512_result.text()
+        }
+
+        file_path, _ = QFileDialog.getSaveFileName(self, 'Save Report', '', 'Text files (*.txt);;JSON files (*.json)')
         if file_path:
             with open(file_path, 'w') as f:
-                f.write("Checksum Report\n")
-                f.write("===============\n")
-                for file_data in self.files_data:
-                    f.write(f"File: {file_data['file']}\n")
-                    f.write(f"MD5: {file_data['md5']}\n")
-                    f.write(f"SHA-1: {file_data['sha1']}\n")
-                    f.write(f"SHA-256: {file_data['sha256']}\n")
-                    f.write(f"SHA-512: {file_data['sha512']}\n\n")
-
-    def calculate_checksum(self, file_path):
-        """Calculate checksum for all selected hash algorithms."""
-        result = {}
-        for hash_type in [('md5', self.md5_var), ('sha1', self.sha1_var),
-                         ('sha256', self.sha256_var), ('sha512', self.sha512_var)]:
-            if hash_type[1].isChecked():
-                checksum = calculate_checksum(file_path, hash_type[0])
-                result[hash_type[0]] = checksum
-                getattr(self, f"{hash_type[0]}_result").setText(checksum)
-        return result
+                if file_path.endswith('.json'):
+                    import json
+                    json.dump(report_data, f, indent=4)
+                else:
+                    for key, value in report_data.items():
+                        f.write(f"{key}: {value}\n")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
